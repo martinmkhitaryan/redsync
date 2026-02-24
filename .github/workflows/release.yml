@@ -52,9 +52,6 @@ jobs:
   build-wheels:
     runs-on: ubuntu-latest
     needs: test
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     permissions:
       id-token: write
 
@@ -66,10 +63,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
       - name: Install Hatch
         run: |
@@ -82,7 +79,7 @@ jobs:
       - name: Upload wheel as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.python-version }}
+          name: wheel
           path: dist/*.whl
           retention-days: 1
 
@@ -143,9 +140,7 @@ jobs:
       - name: Combine all packages
         run: |
           mkdir -p combined-packages
-          for dir in artifacts/wheel-*/; do
-            [ -d "$dir" ] && cp "$dir"/* combined-packages/
-          done
+          cp artifacts/wheel/*.whl combined-packages/
           cp artifacts/sdist/* combined-packages/
           ls -la combined-packages/
 

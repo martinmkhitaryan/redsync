@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "redsync"
-version = "0.0.1"
+version = "1.0.0"
 description = "Redis-based distributed synchronization primitives for Python"
 authors = [
     { name = "Martin Mkhitaryan", email = "mkhitaryan.martin@2000gmail.com" }

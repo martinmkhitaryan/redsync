@@ -11,7 +11,7 @@ from .exceptions import (
 )
 from .semaphore import RedisSemaphore, SemaphoreInitStrategy
 
-__version__ = "0.0.1"
+__version__ = "1.0.0"
 __author__ = "Martin Mkhitaryan"
 __email__ = "mkhitaryan.martin@2000gmail.com"
 
