@@ -1,0 +1,33 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "editor.showUnused": true,
+        "editor.formatOnSave": true,
+        "python.autoComplete.extraPaths": [
+            ".venv/lib/"
+        ],
+        "[python]": {
+            "editor.formatOnSave": true,
+            "editor.codeActionsOnSave": {
+                "source.fixAll": "explicit",
+                "source.organizeImports": "explicit"
+            },
+            "editor.defaultFormatter": "charliermarsh.ruff",
+        },
+        "ruff.nativeServer": "on",
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "ms-python.vscode-pylance",
+            "kevinrose.vsc-python-indent",
+            "charliermarsh.ruff",
+            "bierner.markdown-mermaid",
+            "anysphere.cursorpyright"
+        ]
+    }
+}

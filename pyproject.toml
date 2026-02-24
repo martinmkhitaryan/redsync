@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "redsync"
+version = "0.0.1"
+description = "Redis-based distributed synchronization primitives for Python"
+authors = [
+    { name = "Martin Mkhitaryan", email = "mkhitaryan.martin@2000gmail.com" }
+]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = [
+    "redsync",
+    "redis",
+    "redis-asyncio",
+    "asyncio",
+    "semaphore",
+    "distributed-semaphore",
+    "distributed",
+    "distributed-locking",
+    "synchronization",
+    "synchronization-primitives",
+    "locking",
+    "concurrency",
+    "python",
+]
+dependencies = [
+    "redis>=5.0.0",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/martinmkhitaryan/redsync"
+Repository = "https://github.com/martinmkhitaryan/redsync"
+Documentation = "https://github.com/martinmkhitaryan/redsync#readme"
+Discussions = "https://github.com/martinmkhitaryan/redsync/discussions"
+"Bug Tracker" = "https://github.com/martinmkhitaryan/redsync/issues"
+
+[dependency-groups]
+dev = [
+    "pytest~=8.4.0",
+    "pytest-asyncio~=1.3.0",
+    "pytest-cov~=7.0",
+    "pytest-env~=1.2.0",
+    "ruff~=0.13.0",
+    "hatch~=1.16.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/redsync"]
