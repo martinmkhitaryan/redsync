@@ -5,7 +5,11 @@ from pathlib import Path
 
 from redis.asyncio import Redis
 
-from .exceptions import RedisSemaphoreCountError, RedisSemaphoreNotAcquiredError, RedisSemaphoreTimeoutError
+from .exceptions import (
+    RedisSemaphoreCountError,
+    RedisSemaphoreNotAcquiredError,
+    RedisSemaphoreTimeoutError,
+)
 
 
 class SemaphoreInitStrategy(str, Enum):
@@ -85,11 +89,15 @@ class RedisSemaphore:
         await self.acquire()
         return self
 
-    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+    async def __aexit__(
+        self, exc_type: object, exc_val: object, exc_tb: object
+    ) -> None:
         await self.release()
 
     async def _init_lua(self) -> int:
-        script_obj = self._redis.register_script((LUA_SCRIPTS_DIR / "init_semaphore.lua").read_text())
+        script_obj = self._redis.register_script(
+            (LUA_SCRIPTS_DIR / "init_semaphore.lua").read_text()
+        )
         return await script_obj(
             keys=[self._list_key],
             args=[str(self._count), self.SENTINEL_VALUE],

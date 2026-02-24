@@ -34,7 +34,9 @@ async def test_async_10_tasks_count_1(semaphore_init_strategy):
         results = []
 
         async def task(tid: int):
-            sem = await RedisSemaphore.create(redis, name, count=1, semaphore_init_strategy=semaphore_init_strategy)
+            sem = await RedisSemaphore.create(
+                redis, name, count=1, semaphore_init_strategy=semaphore_init_strategy
+            )
             async with sem:
                 results.append(tid)
                 await asyncio.sleep(0.01)
@@ -51,7 +53,9 @@ async def test_async_tasks_count_3(semaphore_init_strategy):
         results = []
 
         async def task(tid: int):
-            sem = await RedisSemaphore.create(redis, name, count=3, semaphore_init_strategy=semaphore_init_strategy)
+            sem = await RedisSemaphore.create(
+                redis, name, count=3, semaphore_init_strategy=semaphore_init_strategy
+            )
             async with sem:
                 print(f"Task {tid} acquired semaphore {name}")
                 results.append(tid)
@@ -62,21 +66,11 @@ async def test_async_tasks_count_3(semaphore_init_strategy):
 
 
 def test_multiprocess(semaphore_init_strategy):
-    def _worker_process(name: str, strategy: SemaphoreInitStrategy) -> None:
-        async def run() -> None:
-            async with redis_client(REDIS_URL) as r:
-                sem = await RedisSemaphore.create(r, name, count=1, semaphore_init_strategy=strategy)
-                async with sem:
-                    print(f"Worker {os.getpid()} acquired semaphore {name}")
-                    pass
-
-        asyncio.run(run())
-        
     name = f"test_sem_{uuid.uuid4().hex}"
     processes = [
         multiprocessing.Process(
             target=_worker_process,
-            args=(name, semaphore_init_strategy),
+            args=(name, str(semaphore_init_strategy)),
         )
         for _ in range(10)
     ]
@@ -87,6 +81,19 @@ def test_multiprocess(semaphore_init_strategy):
         proc.join(timeout=30)
 
     assert all(p.exitcode == 0 for p in processes)
+
+
+def _worker_process(name: str, strategy: SemaphoreInitStrategy) -> None:
+    async def run() -> None:
+        async with redis_client(REDIS_URL) as r:
+            sem = await RedisSemaphore.create(
+                r, name, count=1, semaphore_init_strategy=strategy
+            )
+            async with sem:
+                print(f"Worker {os.getpid()} acquired semaphore {name}")
+                pass
+
+    asyncio.run(run())
 
 
 @pytest.mark.asyncio
@@ -120,5 +127,5 @@ async def test_timeout_error(semaphore_init_strategy):
         await sem.acquire()
         with pytest.raises(RedisSemaphoreTimeoutError):
             await sem.acquire(timeout=0.05)
-            
+
         await sem.release()
