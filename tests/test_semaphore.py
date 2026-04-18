@@ -10,6 +10,7 @@ from redis.asyncio import Redis
 from redsync import (
     RedisSemaphore,
     RedisSemaphoreCountError,
+    RedisSemaphoreCountMismatchError,
     RedisSemaphoreNotAcquiredError,
     RedisSemaphoreTimeoutError,
     SemaphoreInitStrategy,
@@ -129,3 +130,58 @@ async def test_timeout_error(semaphore_init_strategy):
             await sem.acquire(timeout=0.05)
 
         await sem.release()
+
+
+@pytest.mark.asyncio
+async def test_attach(semaphore_init_strategy):
+    async with redis_client() as redis:
+        name = f"test_sem_{uuid.uuid4().hex}"
+
+        # Creator
+        sem_creator = await RedisSemaphore.create(
+            redis, name, count=2, semaphore_init_strategy=semaphore_init_strategy
+        )
+        assert await sem_creator.get_count() == 2
+
+        # Attach
+        sem_attach = await RedisSemaphore.attach(redis, name)
+        assert await sem_attach.get_count() == 2
+
+        async with sem_creator:
+            async with sem_attach:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_attach_timeout(semaphore_init_strategy):
+    async with redis_client() as redis:
+        name = f"test_sem_{uuid.uuid4().hex}"
+
+        # Attach to non-existent semaphore should raise timeout
+        with pytest.raises(RedisSemaphoreTimeoutError):
+            await RedisSemaphore.attach(redis, name, timeout=0.1)
+
+
+@pytest.mark.asyncio
+async def test_count_mismatch_error(semaphore_init_strategy):
+    async with redis_client() as redis:
+        name = f"test_sem_{uuid.uuid4().hex}"
+
+        # Creator 1
+        await RedisSemaphore.create(
+            redis, name, count=5, semaphore_init_strategy=semaphore_init_strategy
+        )
+
+        # Creator 2 trying to use a different count
+        with pytest.raises(RedisSemaphoreCountMismatchError) as exc_info:
+            await RedisSemaphore.create(
+                redis, name, count=10, semaphore_init_strategy=semaphore_init_strategy
+            )
+        assert exc_info.value.requested == 10
+        assert exc_info.value.actual == 5
+
+        # Creator 3 trying to use the SAME count (should succeed)
+        sem3 = await RedisSemaphore.create(
+            redis, name, count=5, semaphore_init_strategy=semaphore_init_strategy
+        )
+        assert await sem3.get_count() == 5

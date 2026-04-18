@@ -8,6 +8,15 @@ class RedisSemaphoreCountError(RedisSemaphoreError):
         super().__init__(f"Count must be between 1 and 4096, got {count}")
 
 
+class RedisSemaphoreCountMismatchError(RedisSemaphoreError):
+    def __init__(self, requested: int, actual: int) -> None:
+        self.requested = requested
+        self.actual = actual
+        super().__init__(
+            f"Requested count {requested} does not match existing count {actual}"
+        )
+
+
 class RedisSemaphoreNotAcquiredError(RedisSemaphoreError):
     def __init__(self) -> None:
         super().__init__("release() called without acquiring the semaphore")

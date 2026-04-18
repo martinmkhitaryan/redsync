@@ -6,6 +6,7 @@ Provides distributed semaphores and locking built on Redis for asyncio applicati
 
 from .exceptions import (
     RedisSemaphoreCountError,
+    RedisSemaphoreCountMismatchError,
     RedisSemaphoreNotAcquiredError,
     RedisSemaphoreTimeoutError,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "RedisSemaphore",
     "SemaphoreInitStrategy",
     "RedisSemaphoreCountError",
+    "RedisSemaphoreCountMismatchError",
     "RedisSemaphoreNotAcquiredError",
     "RedisSemaphoreTimeoutError",
 ]
