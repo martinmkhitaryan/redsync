@@ -71,7 +71,7 @@ jobs:
         run: hatch build --target wheel
 
       - name: Upload wheel as artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: wheel
           path: dist/*.whl
@@ -109,7 +109,7 @@ jobs:
         run: python -m build --sdist
 
       - name: Upload source distribution as artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/
@@ -127,7 +127,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
 
