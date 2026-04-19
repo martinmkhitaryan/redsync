@@ -37,7 +37,7 @@ class RedisSemaphore:
         count: int,
         lease_ttl: float = 300.0,
         semaphore_init_strategy: SemaphoreInitStrategy = SemaphoreInitStrategy.LUA,
-        key_prefix: str = "redis_semaphore",
+        key_prefix: str = "redsync:semaphore",
     ) -> None:
         if not (1 <= count <= 4096):
             raise RedisSemaphoreCountError(count)
@@ -64,7 +64,7 @@ class RedisSemaphore:
         count: int = 1,
         lease_ttl: float = 300.0,
         semaphore_init_strategy: SemaphoreInitStrategy = SemaphoreInitStrategy.LUA,
-        key_prefix: str = "redis_semaphore",
+        key_prefix: str = "redsync:semaphore",
     ) -> RedisSemaphore:
         """
         Create or ensure the existence of a distributed semaphore with a specific count.
@@ -103,7 +103,7 @@ class RedisSemaphore:
         *,
         timeout: float | None = 60.0,
         lease_ttl: float = 300.0,
-        key_prefix: str = "redis_semaphore",
+        key_prefix: str = "redsync:semaphore",
     ) -> RedisSemaphore:
         """
         Attach to an already existing distributed semaphore without specifying a count.

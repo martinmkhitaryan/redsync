@@ -1,5 +1,9 @@
-class RedisSemaphoreError(Exception):
+class RedsyncError(Exception):
     """Base exception for redsync errors."""
+
+
+class RedisSemaphoreError(RedsyncError):
+    """Base exception for semaphore related errors."""
 
 
 class RedisSemaphoreCountError(RedisSemaphoreError):
@@ -25,3 +29,12 @@ class RedisSemaphoreNotAcquiredError(RedisSemaphoreError):
 class RedisSemaphoreTimeoutError(RedisSemaphoreError):
     def __init__(self) -> None:
         super().__init__("Failed to acquire the semaphore")
+
+
+class RedisEventError(RedsyncError):
+    """Base exception for event related errors."""
+
+
+class RedisEventTimeoutError(RedisEventError):
+    def __init__(self) -> None:
+        super().__init__("Timed out waiting for the event")

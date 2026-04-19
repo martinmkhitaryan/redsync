@@ -8,17 +8,23 @@
 
 ## Features
 
-- **Blocking, no polling** – Uses Redis `BLPOP`: the connection blocks on the server until a permit is available. No busy-waiting, no lock + pub/sub overhead.
-- **Async-first** – Built on `redis.asyncio`; use with `async`/`await` and context managers.
-- **Configurable init** – LUA (atomic, default) or OPTIMISTIC_LOCKING strategy for creating the permit pool.
-- **N permits** – Semaphore count from 1 to 4096 for limiting concurrency across processes.
-- **Automatic lifecycle** – Built-in watchdog with lease extension keeps semaphores alive while in use; Redis auto-deletes keys when all clients disconnect or crash.
+### Core
+- **Blocking, no polling** – Uses Redis `BLPOP`: the connection blocks on the server until a permit or signal is available. No busy-waiting, no lock + pub/sub overhead.
+- **Async-first** – Built on `redis.asyncio`; use with `async`/`await`.
 - **Python 3.10+** – Modern Python support.
+
+### Semaphore
+- **N permits** – Semaphore count from 1 to 4096 for limiting concurrency across processes.
+- **Configurable init** – LUA (atomic, default) or OPTIMISTIC_LOCKING strategy for creating the permit pool.
+- **Automatic lifecycle** – Built-in watchdog keeps semaphores alive while in use; Redis auto-deletes keys when all clients disconnect or crash.
+
+### Event
+- **Distributed Signal** – Simple one-to-one signaling between processes.
 
 ## TODO
 
 - [ ] **Automatic leaked permit recovery** – Implement a mechanism (e.g. via heartbeats in metadata) to detect and reclaim permits that were leaked because a worker crashed while holding them.
-- [ ] **Other sync primitives** – Add more primitives (e.g. event).
+- [ ] **Other sync primitives** – Add more primitives.
 
 ## Installation
 
@@ -107,6 +113,33 @@ The semaphore uses a Redis list as a permit pool. The list must be created and f
 
 Default is `SemaphoreInitStrategy.LUA`. Use `SemaphoreInitStrategy.OPTIMISTIC_LOCKING` to avoid Lua.
 
+## Event
+
+A distributed version of a one-to-one signal. `set()` pushes a signal to Redis, and `wait()` blocks until a signal is available.
+
+### Usage
+
+```python
+from redsync import RedisEvent, RedisEventTimeoutError
+
+async def worker():
+    event = RedisEvent(r, "task_done")
+
+    print("Waiting for signal...")
+    await event.wait(timeout=60)
+    print("Signal received, continuing work!")
+
+async def trigger():
+    event = RedisEvent(r, "task_done")
+    await event.set()  # Wakes up exactly one waiter
+```
+
+### Characteristics
+
+- **One-to-One**: Each `set()` call wakes up exactly one `wait()` call.
+- **Persistence**: If `set()` is called when no one is waiting, the signal is stored in Redis until a waiter arrives.
+- **No Polling**: Uses `BLPOP` for efficient blocking.
+
 ## Lifecycle (Watchdog)
 
 Every `RedisSemaphore` instance runs a background **watchdog** task that periodically extends the TTL of the underlying Redis keys. This ensures:
@@ -131,11 +164,12 @@ If `close()` is not called (e.g. process crash), the keys will naturally expire 
 
 ## Exceptions
 
-- `RedisSemaphoreError` - Base exception
-- `RedisSemaphoreTimeoutError` – `acquire()` or `attach()` timed out
+- `RedsyncError` - Base exception
+- `RedisSemaphoreError`, `RedisEventError` - Component base exceptions
+- `RedisSemaphoreTimeoutError`, `RedisEventTimeoutError` – Timeout occurred
 - `RedisSemaphoreNotAcquiredError` – `release()` called without acquiring
 - `RedisSemaphoreCountError` – `count` not in 1–4096
-- `RedisSemaphoreCountMismatchError` – `create()` was called with a count that doesn't match the existing semaphore count
+- `RedisSemaphoreCountMismatchError` – `create()` count mismatch
 
 ## API Reference
 
@@ -147,12 +181,12 @@ class RedisSemaphore:
     async def create(cls, redis_client, name: str, *, count: int = 1,
                     lease_ttl: float = 300.0,
                     semaphore_init_strategy: SemaphoreInitStrategy = SemaphoreInitStrategy.LUA,
-                    key_prefix: str = "redis_semaphore") -> RedisSemaphore
+                    key_prefix: str = "redsync:semaphore") -> RedisSemaphore
 
     @classmethod
     async def attach(cls, redis_client, name: str, *, timeout: float | None = 60.0,
                     lease_ttl: float = 300.0,
-                    key_prefix: str = "redis_semaphore") -> RedisSemaphore
+                    key_prefix: str = "redsync:semaphore") -> RedisSemaphore
 
     async def get_count(self) -> int | None
 
@@ -162,11 +196,26 @@ class RedisSemaphore:
     async def __aenter__(self) -> RedisSemaphore
     async def __aexit__(...) -> None
 ```
-
 - **name** – Semaphore identifier (shared across processes).
 - **count** – Number of permits (1–4096).
 - **lease_ttl** – TTL in seconds for Redis keys; the watchdog renews every `lease_ttl / 3` seconds.
 - **timeout** – For `acquire()`: seconds to wait; `None` blocks indefinitely. Raises `RedisSemaphoreTimeoutError` on timeout.
+
+### RedisEvent
+
+```python
+class RedisEvent:
+    def __init__(
+        self, 
+        redis_client, name: str, *,
+        key_prefix: str = "redsync:event"
+    ) -> None
+    async def set(self) -> None
+    async def wait(self, timeout: float | None = None) -> None
+    async def clear(self) -> None
+    async def is_set(self) -> bool
+```
+
 
 ## Running tests
 
