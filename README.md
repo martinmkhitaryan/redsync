@@ -12,15 +12,12 @@
 - **Async-first** – Built on `redis.asyncio`; use with `async`/`await` and context managers.
 - **Configurable init** – LUA (atomic, default) or OPTIMISTIC_LOCKING strategy for creating the permit pool.
 - **N permits** – Semaphore count from 1 to 4096 for limiting concurrency across processes.
+- **Automatic lifecycle** – Built-in watchdog with lease extension keeps semaphores alive while in use; Redis auto-deletes keys when all clients disconnect or crash.
 - **Python 3.10+** – Modern Python support.
 
 ## TODO
 
-- [ ] **Semaphore delete / lifecycle**
-  - Option A: set expire time on the list key (simple; semaphore disappears when unused).
-  - Option B: async background task that extends TTL while at least one semaphore instance exists (keeps it alive as long as someone uses it).
-  - Consider other algorithms (e.g. refcount in metadata, lease-based cleanup).
-- [ ] **Maybe List vs sorted set** – Evaluate whether Redis sorted sets are a better fit than a list (e.g. per-permit TTL, ordering, or different blocking semantics).
+- [ ] **Automatic leaked permit recovery** – Implement a mechanism (e.g. via heartbeats in metadata) to detect and reclaim permits that were leaked because a worker crashed while holding them.
 - [ ] **Other sync primitives** – Add more primitives (e.g. event).
 
 ## Installation
@@ -110,6 +107,28 @@ The semaphore uses a Redis list as a permit pool. The list must be created and f
 
 Default is `SemaphoreInitStrategy.LUA`. Use `SemaphoreInitStrategy.OPTIMISTIC_LOCKING` to avoid Lua.
 
+## Lifecycle (Watchdog)
+
+Every `RedisSemaphore` instance runs a background **watchdog** task that periodically extends the TTL of the underlying Redis keys. This ensures:
+
+- **Keys stay alive** as long as at least one client holds a reference to the semaphore.
+- **Automatic cleanup** when all clients disconnect or crash — Redis expires the keys after `lease_ttl` seconds with no renewals.
+- **No thundering herd** — each watchdog adds random jitter to its renewal interval so multiple clients don't all hit Redis at the same instant.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `lease_ttl` | `300.0` (5 min) | TTL set on Redis keys. The watchdog renews every `lease_ttl / 3` seconds (±20% jitter). |
+
+```python
+# Custom lease TTL
+sem = await RedisSemaphore.create(r, "my_resource", count=3, lease_ttl=120.0)
+
+# Always close when done to stop the watchdog immediately
+await sem.close()
+```
+
+If `close()` is not called (e.g. process crash), the keys will naturally expire after `lease_ttl` seconds.
+
 ## Exceptions
 
 - `RedisSemaphoreError` - Base exception
@@ -126,23 +145,27 @@ Default is `SemaphoreInitStrategy.LUA`. Use `SemaphoreInitStrategy.OPTIMISTIC_LO
 class RedisSemaphore:
     @classmethod
     async def create(cls, redis_client, name: str, *, count: int = 1,
+                    lease_ttl: float = 300.0,
                     semaphore_init_strategy: SemaphoreInitStrategy = SemaphoreInitStrategy.LUA,
                     key_prefix: str = "redis_semaphore") -> RedisSemaphore
 
     @classmethod
     async def attach(cls, redis_client, name: str, *, timeout: float | None = 60.0,
+                    lease_ttl: float = 300.0,
                     key_prefix: str = "redis_semaphore") -> RedisSemaphore
 
     async def get_count(self) -> int | None
 
     async def acquire(self, timeout: float | None = None) -> None  # None = block until available
     async def release(self) -> None
+    async def close(self) -> None  # Stop the watchdog task
     async def __aenter__(self) -> RedisSemaphore
     async def __aexit__(...) -> None
 ```
 
 - **name** – Semaphore identifier (shared across processes).
 - **count** – Number of permits (1–4096).
+- **lease_ttl** – TTL in seconds for Redis keys; the watchdog renews every `lease_ttl / 3` seconds.
 - **timeout** – For `acquire()`: seconds to wait; `None` blocks indefinitely. Raises `RedisSemaphoreTimeoutError` on timeout.
 
 ## Running tests

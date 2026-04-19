@@ -13,12 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RedisSemaphore.get_count()` returning the configured permit count.
 - `RedisSemaphoreCountMismatchError` when `create()` is called with a `count` that does not match the existing semaphore.
 - Redis metadata key (`:meta`) storing `count` alongside the permit list; Lua init script reads/writes it and returns the stored count for validation.
+- Watchdog background task to automatically extend the TTL of semaphore keys while in use, preventing resource leaks.
+- `lease_ttl` parameter for `create()` and `attach()` (default 300s) to control key expiration.
+- `RedisSemaphore.close()` method to gracefully shut down the background watchdog task.
 
 ### Changed
 
 - **Breaking:** Replaced `SemaphoreInitStrategy.SETNX` with `SemaphoreInitStrategy.OPTIMISTIC_LOCKING`; non-Lua initialization now uses `WATCH` / `MULTI` / `EXEC` instead of `SETNX` plus a separate init key.
 - **Breaking:** `RedisSemaphore` constructor now requires an explicit `count` (no default).
 - `RedisSemaphore.create()` validates that an existing semaphore’s count matches the requested value (Lua and optimistic-locking paths).
+- Improved background task resilience by handling `RedisConnectionError` and adding random jitter to renewal intervals.
+- Removed unused `_init_key` from the internal Redis key scheme.
 
 ## [1.0.0] - 2026-02-24
 

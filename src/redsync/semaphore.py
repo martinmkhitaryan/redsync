@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from enum import Enum
 from pathlib import Path
 
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import WatchError
 
 from .exceptions import (
@@ -33,6 +35,7 @@ class RedisSemaphore:
         name: str,
         *,
         count: int,
+        lease_ttl: float = 300.0,
         semaphore_init_strategy: SemaphoreInitStrategy = SemaphoreInitStrategy.LUA,
         key_prefix: str = "redis_semaphore",
     ) -> None:
@@ -42,14 +45,15 @@ class RedisSemaphore:
         self._redis = redis_client
         self.name = name
         self._count = count
+        self._lease_ttl = lease_ttl
         self._semaphore_init_strategy = semaphore_init_strategy
         self._prefix = key_prefix.rstrip(":")
 
         self._list_key = f"{self._prefix}:{name}:list"
         self._meta_key = f"{self._prefix}:{name}:meta"
-        self._init_key = f"{self._prefix}:{name}:init"
 
         self._acquired = False
+        self._watchdog_task: asyncio.Task[None] | None = None
 
     @classmethod
     async def create(
@@ -58,6 +62,7 @@ class RedisSemaphore:
         name: str,
         *,
         count: int = 1,
+        lease_ttl: float = 300.0,
         semaphore_init_strategy: SemaphoreInitStrategy = SemaphoreInitStrategy.LUA,
         key_prefix: str = "redis_semaphore",
     ) -> RedisSemaphore:
@@ -78,6 +83,7 @@ class RedisSemaphore:
             redis_client,
             name,
             count=count,
+            lease_ttl=lease_ttl,
             semaphore_init_strategy=semaphore_init_strategy,
             key_prefix=key_prefix,
         )
@@ -86,6 +92,7 @@ class RedisSemaphore:
         else:
             await instance._init_optimistic_locking()
 
+        instance._start_watchdog()
         return instance
 
     @classmethod
@@ -95,6 +102,7 @@ class RedisSemaphore:
         name: str,
         *,
         timeout: float | None = 60.0,
+        lease_ttl: float = 300.0,
         key_prefix: str = "redis_semaphore",
     ) -> RedisSemaphore:
         """
@@ -132,12 +140,18 @@ class RedisSemaphore:
 
             await asyncio.sleep(0.05)
 
-        return cls(
+        instance = cls(
             redis_client,
             name,
             count=count,
+            lease_ttl=lease_ttl,
             key_prefix=key_prefix,
         )
+        instance._start_watchdog()
+        return instance
+
+    async def get_count(self) -> int:
+        return self._count
 
     async def acquire(self, timeout: float | None = None) -> None:
         timeout = 0 if timeout is None else max(0, timeout)
@@ -154,6 +168,17 @@ class RedisSemaphore:
         await self._redis.rpush(self._list_key, self.SENTINEL_VALUE)  # type: ignore
         self._acquired = False
 
+    async def close(self) -> None:
+        if not self._watchdog_task:
+            return
+
+        self._watchdog_task.cancel()
+        try:
+            await self._watchdog_task
+        except asyncio.CancelledError:
+            pass
+        self._watchdog_task = None
+
     async def __aenter__(self) -> RedisSemaphore:
         await self.acquire()
         return self
@@ -162,9 +187,6 @@ class RedisSemaphore:
         self, exc_type: object, exc_val: object, exc_tb: object
     ) -> None:
         await self.release()
-
-    async def get_count(self) -> int:
-        return self._count
 
     async def _init_lua(self) -> None:
         script_obj = self._redis.register_script(
@@ -199,3 +221,23 @@ class RedisSemaphore:
                     return
                 except WatchError:
                     continue
+
+    def _start_watchdog(self) -> None:
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+
+    async def _watchdog_loop(self) -> None:
+        try:
+            while True:
+                try:
+                    async with self._redis.pipeline() as pipe:
+                        pipe.expire(self._list_key, int(self._lease_ttl))
+                        pipe.expire(self._meta_key, int(self._lease_ttl))
+                        await pipe.execute()
+                except RedisConnectionError:
+                    pass
+
+                await asyncio.sleep(
+                    self._lease_ttl / 3.0 * (0.8 + 0.4 * random.random())
+                )
+        except asyncio.CancelledError:
+            pass

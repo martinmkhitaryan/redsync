@@ -33,11 +33,13 @@ async def test_async_10_tasks_count_1(semaphore_init_strategy):
     async with redis_client() as redis:
         name = f"test_sem_{uuid.uuid4().hex}"
         results = []
+        semaphores = []
 
         async def task(tid: int):
             sem = await RedisSemaphore.create(
                 redis, name, count=1, semaphore_init_strategy=semaphore_init_strategy
             )
+            semaphores.append(sem)
             async with sem:
                 results.append(tid)
                 await asyncio.sleep(0.01)
@@ -46,17 +48,22 @@ async def test_async_10_tasks_count_1(semaphore_init_strategy):
         await asyncio.gather(*(task(i) for i in range(10)))
         assert set(results) == set(range(-9, 10))
 
+        for sem in semaphores:
+            await sem.close()
+
 
 @pytest.mark.asyncio
 async def test_async_tasks_count_3(semaphore_init_strategy):
     async with redis_client() as redis:
         name = f"test_sem_{uuid.uuid4().hex}"
         results = []
+        semaphores = []
 
         async def task(tid: int):
             sem = await RedisSemaphore.create(
                 redis, name, count=3, semaphore_init_strategy=semaphore_init_strategy
             )
+            semaphores.append(sem)
             async with sem:
                 print(f"Task {tid} acquired semaphore {name}")
                 results.append(tid)
@@ -64,6 +71,9 @@ async def test_async_tasks_count_3(semaphore_init_strategy):
 
         await asyncio.gather(*(task(i) for i in range(9)))
         assert set(results) == set(range(9))
+
+        for sem in semaphores:
+            await sem.close()
 
 
 def test_multiprocess(semaphore_init_strategy):
@@ -93,6 +103,7 @@ def _worker_process(name: str, strategy: SemaphoreInitStrategy) -> None:
             async with sem:
                 print(f"Worker {os.getpid()} acquired semaphore {name}")
                 pass
+            await sem.close()
 
     asyncio.run(run())
 
@@ -116,6 +127,7 @@ async def test_not_acquired_error(semaphore_init_strategy):
         )
         with pytest.raises(RedisSemaphoreNotAcquiredError):
             await sem.release()
+        await sem.close()
 
 
 @pytest.mark.asyncio
@@ -130,6 +142,7 @@ async def test_timeout_error(semaphore_init_strategy):
             await sem.acquire(timeout=0.05)
 
         await sem.release()
+        await sem.close()
 
 
 @pytest.mark.asyncio
@@ -151,6 +164,9 @@ async def test_attach(semaphore_init_strategy):
             async with sem_attach:
                 pass
 
+        await sem_creator.close()
+        await sem_attach.close()
+
 
 @pytest.mark.asyncio
 async def test_attach_timeout(semaphore_init_strategy):
@@ -168,7 +184,7 @@ async def test_count_mismatch_error(semaphore_init_strategy):
         name = f"test_sem_{uuid.uuid4().hex}"
 
         # Creator 1
-        await RedisSemaphore.create(
+        sem1 = await RedisSemaphore.create(
             redis, name, count=5, semaphore_init_strategy=semaphore_init_strategy
         )
 
@@ -185,3 +201,6 @@ async def test_count_mismatch_error(semaphore_init_strategy):
             redis, name, count=5, semaphore_init_strategy=semaphore_init_strategy
         )
         assert await sem3.get_count() == 5
+
+        await sem1.close()
+        await sem3.close()
